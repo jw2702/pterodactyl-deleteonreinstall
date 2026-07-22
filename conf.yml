@@ -1,0 +1,37 @@
+info:
+  name: "Delete Files on Reinstall"
+  identifier: "deleteonreinstall"
+  description: "Adds a 'Delete all files before reinstalling' checkbox to the server reinstall confirmation dialog, mirroring the same option already available when restoring a backup."
+  flags: ""
+  version: "1.0.0"
+  target: "beta-2026-06"
+  author: "jw2702"
+  icon: ""
+  website: ""
+
+admin:
+  view: "view.blade.php"
+  controller: ""
+  css: ""
+  wrapper: ""
+
+dashboard:
+  css: ""
+  wrapper: ""
+  components: "components"
+
+data:
+  directory: "data"
+  public: ""
+  console: ""
+
+requests:
+  views: ""
+  app: ""
+  routers:
+    application: ""
+    client: ""
+    web: ""
+
+database:
+  migrations: ""

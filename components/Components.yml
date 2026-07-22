@@ -1,0 +1,6 @@
+# This extension doesn't inject any components through Blueprint's Components
+# API. This file exists solely so Blueprint recognizes the extension as one
+# that touches the dashboard frontend and rebuilds the React bundle after
+# install.sh/update.sh patch the native panel source files directly.
+#
+# https://blueprint.zip/docs/configs/componentsyml
