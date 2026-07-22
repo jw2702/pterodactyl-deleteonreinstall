@@ -1,132 +1,138 @@
 # deleteonreinstall
 
-Blueprint-Extension für [Pterodactyl](https://pterodactyl.io), die dem
-"Confirm server reinstallation"-Dialog unter `/server/:id/settings`
-(Button "Reinstall Server") eine Checkbox **"Delete all files before
-reinstalling."** hinzufügt — analog zur bereits existierenden
-"Delete all files before restoring backup."-Option beim Wiederherstellen
-eines Backups (`resources/scripts/components/server/backups/BackupContextMenu.tsx`).
+A Blueprint extension for [Pterodactyl](https://pterodactyl.io) that adds a
+**"Delete all files before reinstalling."** checkbox to the "Confirm server
+reinstallation" dialog under `/server/:id/settings` (the "Reinstall Server"
+button) — mirroring the existing "Delete all files before restoring backup."
+option available when restoring a backup
+(`resources/scripts/components/server/backups/BackupContextMenu.tsx`).
 
-## Funktionsweise
+## How it works
 
-Blueprints `Components.yml` erlaubt nur das Einhängen zusätzlicher React-Komponenten
-in vordefinierte Slots (z. B. `Server.Settings.BeforeContent`/`AfterContent`), aber keine
-Änderung an bereits bestehenden Panel-Komponenten wie der nativen
-`ReinstallServerBox.tsx`. Da hier explizit der *native* Dialog erweitert werden soll,
-patcht diese Extension die betroffenen Panel-Dateien direkt per `sed`
-(so wie es die [Extension-scripts-Doku](https://blueprint.zip/docs/concepts/scripts)
-für "out-of-scope"-Änderungen vorsieht) — die Skripte fügen nur klar durch
-`blueprintframework:deleteonreinstall`-Marker gekennzeichnete Zeilen/Blöcke ein
-und lassen sich dadurch beim Entfernen der Extension exakt wieder rückgängig machen.
+Blueprint's `Components.yml` only allows mounting additional React components
+into predefined slots (e.g. `Server.Settings.BeforeContent`/`AfterContent`),
+not modifying existing panel components such as the native
+`ReinstallServerBox.tsx`. Since this extension needs to extend the *native*
+dialog itself, it patches the affected panel files directly via `sed` (as
+described in the [extension scripts docs](https://blueprint.zip/docs/concepts/scripts)
+for "out-of-scope" changes) — the scripts only insert lines/blocks clearly
+marked with `blueprintframework:deleteonreinstall` markers, so they can be
+reverted exactly when the extension is removed.
 
-Patched werden:
+Files patched:
 
-- `resources/scripts/api/server/reinstallServer.ts` — nimmt jetzt einen zweiten
-  `truncate`-Parameter entgegen und schickt ihn im Request-Body mit.
-- `resources/scripts/components/server/settings/ReinstallServerBox.tsx` — fügt die
-  Checkbox in den bestehenden `Dialog.Confirm` ein (gleiche Optik/Klassen wie beim
-  Backup-Restore-Dialog).
-- `app/Http/Requests/Api/Client/Servers/Settings/ReinstallServerRequest.php` —
-  validiert das neue `truncate`-Feld (`sometimes|boolean`).
-- `app/Http/Controllers/Api/Client/Servers/SettingsController.php` — wenn `truncate`
-  gesetzt ist, werden vor dem eigentlichen Reinstall alle Dateien im Server-Root über
-  Wings (`DaemonFileRepository::getDirectory()` + `::deleteFiles()`) gelöscht — genau
-  der Mechanismus, den Wings/Panel auch beim `truncate_directory`-Flag der
-  Backup-Wiederherstellung nutzen. Der Wings-`reinstall`-Endpunkt selbst unterstützt
-  kein Truncate-Flag, daher übernimmt der Panel-Controller das Löschen vorab.
+- `resources/scripts/api/server/reinstallServer.ts` — now accepts a second
+  `truncate` parameter and sends it in the request body.
+- `resources/scripts/components/server/settings/ReinstallServerBox.tsx` —
+  adds the checkbox to the existing `Dialog.Confirm` (same look/classes as
+  the backup restore dialog).
+- `app/Http/Requests/Api/Client/Servers/Settings/ReinstallServerRequest.php`
+  — validates the new `truncate` field (`sometimes|boolean`).
+- `app/Http/Controllers/Api/Client/Servers/SettingsController.php` — when
+  `truncate` is set, all files in the server root are deleted via Wings
+  (`DaemonFileRepository::getDirectory()` + `::deleteFiles()`) before the
+  actual reinstall — the same mechanism Wings/Panel use for the
+  `truncate_directory` flag during backup restoration. The Wings `reinstall`
+  endpoint itself has no truncate flag, so the panel controller handles the
+  deletion upfront.
 
-### Warum `data/` + `data.directory: "data"`
+### Why `data/` + `data.directory: "data"`
 
-Laut [Extension-scripts-Doku](https://blueprint.zip/docs/concepts/scripts) müssen
-`install.sh`/`update.sh`/`remove.sh` im Wurzelpfad des über `data.directory` gebundenen
-Ordners liegen. Blueprint kopiert diesen Ordner nach
-`.blueprint/extensions/<identifier>/private/` und sucht **dort** — und nur dort — nach
-den Skripten (bestätigt im Blueprint-Quellcode, `scripts/commands/extensions/remove.sh`).
-Ohne diese Bindung wird v. a. `remove.sh` beim Entfernen der Extension stillschweigend
-**nicht** ausgeführt, die Patches an den Panel-Dateien bleiben also bestehen. Deshalb
-liegen `install.sh`, `update.sh`, `remove.sh` und `patches/` hier unter `data/`, gebunden
-über `data.directory: "data"` in der `conf.yml`.
+Per the [extension scripts docs](https://blueprint.zip/docs/concepts/scripts),
+`install.sh`/`update.sh`/`remove.sh` must live at the root of the folder
+bound via `data.directory`. Blueprint copies that folder to
+`.blueprint/extensions/<identifier>/private/` and looks for the scripts
+**only** there (confirmed in Blueprint's source, `scripts/commands/extensions/remove.sh`).
+Without this binding, `remove.sh` in particular is silently **not** executed
+when the extension is removed, leaving the patches to the panel files in
+place. That's why `install.sh`, `update.sh`, `remove.sh`, and `patches/`
+live under `data/`, bound via `data.directory: "data"` in `conf.yml`.
 
-### Warum `components/Components.yml` (ohne echte Komponenten)
+### Why `components/Components.yml` (with no real components)
 
-Blueprint löst einen Frontend-Rebuild (`yarn build:production`) nur aus, wenn die
-Extension `dashboard.css`, `dashboard.wrapper` oder `dashboard.components` bindet.
-Da wir den nativen Panel-Code direkt patchen (nicht über die Components-API), bräuchten
-wir eigentlich keine `Components.yml` — binden aber trotzdem eine (funktional leere)
-`components/`-Directory, damit Blueprint nach dem `install.sh`/`remove.sh`-Lauf
-zuverlässig neu baut. Die Datei muss mindestens einen echten YAML-Key enthalten
-(nicht nur Kommentare oder `{}`) — Blueprints eigener `parse_yaml`-Bash-Parser erzeugt bei
-komplett leerem Inhalt sonst einen fehlerhaften `eval`-Aufruf (`={}: command not found`).
+Blueprint only triggers a frontend rebuild (`yarn build:production`) if the
+extension binds `dashboard.css`, `dashboard.wrapper`, or
+`dashboard.components`. Since we patch the native panel code directly
+(rather than going through the Components API), a `Components.yml` isn't
+strictly needed — but we bind a (functionally empty) `components/` directory
+anyway so Blueprint reliably rebuilds after `install.sh`/`remove.sh` runs.
+The file must contain at least one real YAML key (not just comments or
+`{}`) — Blueprint's own `parse_yaml` bash parser otherwise produces a broken
+`eval` call (`={}: command not found`) on completely empty content.
 
-## Installation (Entwicklung)
+## Installation (development)
 
 ```bash
-# Developer-Modus im Admin-Panel unter /admin/extensions aktivieren, dann:
+# Enable developer mode in the admin panel under /admin/extensions, then:
 rm -rf /var/www/pterodactyl/.blueprint/dev/*
 cp -r deleteonreinstall/* /var/www/pterodactyl/.blueprint/dev/
 cd /var/www/pterodactyl
 blueprint -build
 ```
 
-`.blueprint/dev` ist bei Blueprint immer flach (eine Extension pro Dev-Ordner) — die
-Dateien kommen direkt hinein, nicht in einen weiteren `deleteonreinstall/`-Unterordner.
+`.blueprint/dev` is always flat in Blueprint (one extension per dev folder)
+— the files go directly into it, not into a further `deleteonreinstall/`
+subfolder.
 
-## Deinstallation
+## Uninstallation
 
 ```bash
 blueprint -remove deleteonreinstall
 ```
 
-`remove.sh` macht alle vier Patches exakt rückgängig (per Marker-Blöcken), unabhängig
-davon, ob die Extension zuvor über `install.sh` oder `update.sh` installiert wurde.
+`remove.sh` reverts all four patches exactly (via marker blocks), regardless
+of whether the extension was previously installed via `install.sh` or
+`update.sh`.
 
-### Verifikation statt Annahme
+### Verification instead of assumption
 
-`install.sh` prüft vor jedem Patch-Schritt per `require_anchor`, ob die erwartete
-Original-Textstelle noch existiert, und danach per `verify_result`, ob die Änderung
-tatsächlich angekommen ist. `remove.sh` prüft nach dem Revert ebenso (`verify_result` +
-`verify_no_marker`). Passt eine Panel-Version nicht mehr zu den `sed`-Patches (z. B. nach
-einem Pterodactyl-Update mit geändertem Quellcode), bricht das Skript mit einer klaren
-`FATAL`-Meldung ab, statt still nichts zu tun oder eine Datei halb gepatcht zu
-hinterlassen — geprüft mit einem simulierten Anker-Mismatch (siehe Testreihe unten).
+Before each patch step, `install.sh` checks via `require_anchor` whether the
+expected original text still exists, and afterwards via `verify_result`
+whether the change actually landed. `remove.sh` performs the same checks
+after reverting (`verify_result` + `verify_no_marker`). If a panel version no
+longer matches the `sed` patches (e.g. after a Pterodactyl update changed
+the source code), the script aborts with a clear `FATAL` message instead of
+silently doing nothing or leaving a file half-patched — verified with a
+simulated anchor mismatch (see the test section below).
 
-### Bekannte Blueprint-Einschränkung: `update.sh`
+### Known Blueprint limitation: `update.sh`
 
-Laut Doku führt Blueprint beim Aktualisieren einer bereits installierten Extension
-**nicht** das `update.sh` der neuen Version aus, sondern das `update.sh`, das von der
-zuvor installierten Version in `private/` liegt. Ändert sich `update.sh`/`install.sh`
-zwischen zwei Versionen dieser Extension, reicht ein einfaches erneutes `blueprint
--build` also nicht zuverlässig aus, um die neuen Skripte zu übernehmen. Bei
-Skript-Änderungen daher immer einmal komplett neu aufsetzen:
+Per the docs, when updating an already-installed extension, Blueprint does
+**not** run the `update.sh` of the new version, but the `update.sh` that was
+left in `private/` by the previously installed version. If `update.sh`/
+`install.sh` changes between two versions of this extension, a simple
+`blueprint -build` is therefore not reliably enough to pick up the new
+scripts. When the scripts themselves change, always do a full reinstall:
 
 ```bash
 blueprint -remove deleteonreinstall
 blueprint -build
 ```
 
-(Reine Patch-Inhaltsänderungen — z. B. an den `.sed`-Dateien ohne `install.sh`/
-`update.sh` selbst zu ändern — sind davon nicht betroffen, da diese immer frisch aus
-`private/` gelesen werden.)
+(Pure patch-content changes — e.g. to the `.sed` files without changing
+`install.sh`/`update.sh` themselves — aren't affected, since those are
+always read fresh from `private/`.)
 
-## Testen ohne Panel
+## Testing without a panel
 
-Die `data/patches/*.sed`-Skripte lassen sich isoliert gegen Kopien der vier
-Original-Dateien testen (`install.sh` prüft per Marker, ob eine Datei schon gepatcht ist,
-und überspringt sie dann; `remove.sh` prüft ebenso und ist ein No-Op auf ungepatchten
-Dateien). Beide Skripte sind bewusst POSIX-`sh`-kompatibel gehalten (kein
-`${BASH_SOURCE[0]}`, kein `local`) und wurden sowohl unter `bash` als auch unter `dash`
-getestet.
+The `data/patches/*.sed` scripts can be tested in isolation against copies
+of the four original files (`install.sh` checks via markers whether a file
+is already patched and skips it if so; `remove.sh` does the same check and
+is a no-op on unpatched files). Both scripts are deliberately kept
+POSIX-`sh` compatible (no `${BASH_SOURCE[0]}`, no `local`) and have been
+tested under both `bash` and `dash`.
 
-## Kompatibilität
+## Compatibility
 
-Zuletzt verifiziert gegen:
+Last verified against:
 
-- Pterodactyl Panel: `develop`-Branch (Stand: siehe Datum dieses Commits) — die vier
-  gepatchten Dateien wurden 1:1 mit dem aktuellen Upstream-Quellcode abgeglichen.
-- Blueprint Framework: `beta-2026-06` (aktuelles stabiles Release, passend zu
+- Pterodactyl Panel: `develop` branch (as of the date of this commit) — the
+  four patched files were compared 1:1 against the current upstream source.
+- Blueprint Framework: `beta-2026-06` (current stable release, matching
   `info.target` in `conf.yml`).
 
-Da die Patches auf exakten Textstellen im Panel-Quellcode basieren, ist Kompatibilität
-mit *zukünftigen* Pterodactyl-Versionen nicht garantiert — wird aber, dank der
-Verifikation oben, im Fehlerfall immer laut und mit klarer Fehlermeldung erkannt statt
-unbemerkt zu einer wirkungslosen Installation zu führen.
+Since the patches rely on exact text locations in the panel source code,
+compatibility with *future* Pterodactyl versions is not guaranteed — but
+thanks to the verification described above, any mismatch will always be
+caught loudly with a clear error message rather than silently resulting in
+a no-op installation.
