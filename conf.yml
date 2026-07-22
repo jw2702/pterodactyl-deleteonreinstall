@@ -7,7 +7,7 @@ info:
   target: "beta-2026-06"
   author: "jw2702"
   icon: ""
-  website: ""
+  website: "https://github.com/jw2702/pterodactyl-deleteonreinstall"
 
 admin:
   view: "view.blade.php"
