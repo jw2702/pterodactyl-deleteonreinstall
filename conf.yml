@@ -3,7 +3,7 @@ info:
   identifier: "deleteonreinstall"
   description: "Adds a 'Delete all files before reinstalling' checkbox to the server reinstall confirmation dialog, mirroring the same option already available when restoring a backup."
   flags: ""
-  version: "1.0.0"
+  version: "0.0.0"
   target: "beta-2026-06"
   author: "jw2702"
   icon: ""

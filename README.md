@@ -60,19 +60,15 @@ The file must contain at least one real YAML key (not just comments or
 `{}`) — Blueprint's own `parse_yaml` bash parser otherwise produces a broken
 `eval` call (`={}: command not found`) on completely empty content.
 
-## Installation (development)
+## Installation
 
-```bash
-# Enable developer mode in the admin panel under /admin/extensions, then:
-rm -rf /var/www/pterodactyl/.blueprint/dev/*
-cp -r deleteonreinstall/* /var/www/pterodactyl/.blueprint/dev/
-cd /var/www/pterodactyl
-blueprint -build
-```
+1. Download the latest `deleteonreinstall.blueprint` file from the
+   [Releases](https://github.com/jw2702/pterodactyl-deleteonreinstall/releases) page.
+2. Upload it to your panel and run:
 
-`.blueprint/dev` is always flat in Blueprint (one extension per dev folder)
-— the files go directly into it, not into a further `deleteonreinstall/`
-subfolder.
+   ```bash
+   blueprint -install deleteonreinstall.blueprint
+   ```
 
 ## Uninstallation
 
